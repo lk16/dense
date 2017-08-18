@@ -9,12 +9,14 @@ import (
 	"sort"
 )
 
-type ItemFrequency struct {
-	item string
-	freq int
+type HuffmanTreeNode struct {
+	item   string
+	weight int
+	left   *HuffmanTreeNode
+	right  *HuffmanTreeNode
 }
 
-func GetFrequencies(str string, max_len int) (freqs []ItemFrequency) {
+func GetFrequencies(str string, max_len int) (freqs []HuffmanTreeNode) {
 	freq_map := make(map[string]int, 10)
 
 	for start := range str {
@@ -28,17 +30,55 @@ func GetFrequencies(str string, max_len int) (freqs []ItemFrequency) {
 		}
 	}
 
-	freqs = make([]ItemFrequency, len(freq_map))
+	freqs = make([]HuffmanTreeNode, len(freq_map))
 	i := 0
 	for item, freq := range freq_map {
-		freqs[i] = ItemFrequency{
-			item: item,
-			freq: freq}
+		freqs[i] = HuffmanTreeNode{
+			item:   item,
+			weight: freq,
+			left:   nil,
+			right:  nil}
 		i += 1
 	}
 
-	sort.Slice(freqs, func(i, j int) bool { return freqs[i].freq > freqs[j].freq })
+	sort.Slice(freqs, func(i, j int) bool { return freqs[i].weight > freqs[j].weight })
 	return
+}
+
+func GenHuffmanTree(nodes []HuffmanTreeNode) (tree *HuffmanTreeNode) {
+	for len(nodes) > 1 {
+		sort.Slice(nodes, func(i, j int) bool { return nodes[i].weight > nodes[j].weight })
+
+		left := new(HuffmanTreeNode)
+		right := new(HuffmanTreeNode)
+
+		*left = nodes[len(nodes)-1]
+		*right = nodes[len(nodes)-2]
+
+		nodes = nodes[:len(nodes)-1]
+		nodes[len(nodes)-1] = HuffmanTreeNode{
+			item:   "",
+			weight: left.weight + right.weight,
+			left:   left,
+			right:  right}
+
+	}
+	tree = new(HuffmanTreeNode)
+	*tree = nodes[0]
+	return
+}
+
+func (node *HuffmanTreeNode) print(code string) {
+	if node.item == "" {
+		node.left.print(code + "0")
+		node.right.print(code + "1")
+	} else {
+		fmt.Printf("%d\t'%s'\t%s\n", node.weight, node.item, code)
+	}
+}
+
+func (node *HuffmanTreeNode) Print() {
+	node.print("")
 }
 
 func main() {
@@ -68,10 +108,9 @@ func main() {
 
 	input := input_buff.String()
 
-	freqs := GetFrequencies(input, *max_freq_group_len)
+	nodes := GetFrequencies(input, *max_freq_group_len)
 
-	for _, pair := range freqs {
-		fmt.Printf("%d\t'%s'\n", pair.freq, pair.item)
-	}
+	tree := GenHuffmanTree(nodes)
+	tree.Print()
 
 }
