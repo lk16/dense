@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
+	"io"
+	"os"
 	"sort"
 )
 
@@ -39,16 +42,33 @@ func GetFrequencies(str string, max_len int) (freqs []ItemFrequency) {
 }
 
 func main() {
-	input_flag := flag.String("input", "", "Input string for the compression algorithm")
 
+	file_name := flag.String("i", "", "Input file")
+	max_freq_group_len := flag.Int("mfgl", 2, "Maximum length in bytes for grouping in algorithm")
 	flag.Parse()
 
-	input := *input_flag
+	var file *os.File
 
-	freqs := GetFrequencies(input, 2)
+	if *file_name == "" {
+		file = os.Stdin
+	} else {
+		var err interface{}
+		file, err = os.Open(*file_name)
+		if err != nil {
+			panic(err)
+		}
+	}
 
-	fmt.Printf("input = %s\n\n", input)
-	fmt.Printf("freqs =\n")
+	if *max_freq_group_len < 1 || *max_freq_group_len >= 8 {
+		panic("Specified max_freq_group_len is not allowed")
+	}
+
+	var input_buff bytes.Buffer
+	io.Copy(&input_buff, file)
+
+	input := input_buff.String()
+
+	freqs := GetFrequencies(input, *max_freq_group_len)
 
 	for _, pair := range freqs {
 		fmt.Printf("%d\t'%s'\n", pair.freq, pair.item)
