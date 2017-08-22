@@ -15,57 +15,6 @@ type HuffmanTree struct {
 	right  *HuffmanTree
 }
 
-type freqTree struct {
-	children map[byte]*freqTree
-	count    int
-}
-
-func (node *freqTree) printRecursive(depth int) {
-	for key, child := range node.children {
-		for i := 0; i < depth; i++ {
-			fmt.Print("  ")
-		}
-		fmt.Printf("'%s' (%d):\n", string(key), child.count)
-		child.printRecursive(depth + 1)
-	}
-	if len(node.children) == 0 {
-		for i := 0; i < depth; i++ {
-			fmt.Print("  ")
-		}
-		fmt.Printf("-\n")
-	}
-}
-
-func (node *freqTree) print() {
-	fmt.Printf("root (%d):\n", node.count)
-	node.printRecursive(0)
-}
-
-func (node *freqTree) toHuffmanTreeSliceRecursive(slice *[]HuffmanTree, prefix *[]byte) {
-	*prefix = append(*prefix, byte(0))
-	for b, child := range node.children {
-		(*prefix)[len(*prefix)-1] = b
-
-		bytes := make([]byte, len(*prefix))
-		copy(bytes, *prefix)
-
-		*slice = append(*slice, HuffmanTree{
-			bytes:  bytes,
-			weight: child.count,
-			left:   nil,
-			right:  nil})
-		child.toHuffmanTreeSliceRecursive(slice, prefix)
-	}
-	*prefix = (*prefix)[:len(*prefix)-1]
-}
-
-func (node *freqTree) toHuffmanTreeSlice() (slice []HuffmanTree) {
-	slice = []HuffmanTree{}
-	prefix := []byte{}
-	node.toHuffmanTreeSliceRecursive(&slice, &prefix)
-	return
-}
-
 func New(file *os.File, max_group_len int) (tree *HuffmanTree) {
 	var input_buff bytes.Buffer
 	io.Copy(&input_buff, file)
@@ -109,11 +58,14 @@ func getFrequencies(input []byte, max_group_len int) (freqs []HuffmanTree) {
 
 	}
 
-	root.print()
+	root.Print()
 	fmt.Printf("\n\n")
 
-	// TODO
-	freqs = root.toHuffmanTreeSlice()
+	root.Prune()
+	root.Print()
+	fmt.Printf("\n\n")
+
+	freqs = root.ToHuffmanTreeSlice()
 	return
 }
 
