@@ -9,68 +9,111 @@ import (
 )
 
 type HuffmanTree struct {
-	item   string
+	bytes  []byte
 	weight int
 	left   *HuffmanTree
 	right  *HuffmanTree
 }
 
+type freqTree struct {
+	children map[byte]*freqTree
+	count    int
+}
+
+func (node *freqTree) printRecursive(depth int) {
+	for key, child := range node.children {
+		for i := 0; i < depth; i++ {
+			fmt.Print("  ")
+		}
+		fmt.Printf("'%s' (%d):\n", string(key), child.count)
+		child.printRecursive(depth + 1)
+	}
+	if len(node.children) == 0 {
+		for i := 0; i < depth; i++ {
+			fmt.Print("  ")
+		}
+		fmt.Printf("-\n")
+	}
+}
+
+func (node *freqTree) print() {
+	fmt.Printf("root (%d):\n", node.count)
+	node.printRecursive(0)
+}
+
+func (node *freqTree) toHuffmanTreeSliceRecursive(slice *[]HuffmanTree, prefix *[]byte) {
+	*prefix = append(*prefix, byte(0))
+	for b, child := range node.children {
+		(*prefix)[len(*prefix)-1] = b
+
+		bytes := make([]byte, len(*prefix))
+		copy(bytes, *prefix)
+
+		*slice = append(*slice, HuffmanTree{
+			bytes:  bytes,
+			weight: child.count,
+			left:   nil,
+			right:  nil})
+		child.toHuffmanTreeSliceRecursive(slice, prefix)
+	}
+	*prefix = (*prefix)[:len(*prefix)-1]
+}
+
+func (node *freqTree) toHuffmanTreeSlice() (slice []HuffmanTree) {
+	slice = []HuffmanTree{}
+	prefix := []byte{}
+	node.toHuffmanTreeSliceRecursive(&slice, &prefix)
+	return
+}
+
 func New(file *os.File, max_group_len int) (tree *HuffmanTree) {
 	var input_buff bytes.Buffer
 	io.Copy(&input_buff, file)
-	input := input_buff.String()
+	input := input_buff.Bytes()
 
 	freqs := getFrequencies(input, max_group_len)
-	freqs = trimFrequencies(freqs, max_group_len)
 	tree = genHuffmanTree(freqs)
 	return
 }
 
-func trimFrequencies(freqs []HuffmanTree, max_group_len int) (trimmed []HuffmanTree) {
-	i := 0
-	for i < len(freqs) {
-		node := freqs[i]
-		if len(node.item) > 1 && node.weight == 1 {
-			last := len(freqs) - 1
-			if i != last {
-				freqs[i] = freqs[last]
+func getFrequencies(input []byte, max_group_len int) (freqs []HuffmanTree) {
+
+	root := &freqTree{
+		children: make(map[byte]*freqTree, 10),
+		count:    0}
+
+	// visited nodes will only have nil values
+	visited_nodes := make([]*freqTree, max_group_len)
+
+	for byte_index, the_byte := range input {
+		visited_nodes[byte_index%max_group_len] = root
+		root.count++
+
+		for visited_index, visited_node := range visited_nodes {
+			if visited_node == nil {
+				continue
 			}
-			freqs = freqs[:last-1]
-			continue
-		} else {
-			i++
-		}
-	}
-	trimmed = freqs
-	return
-}
 
-func getFrequencies(str string, max_group_len int) (freqs []HuffmanTree) {
-	freq_map := make(map[string]int, 10)
-
-	for start := range str {
-		for end := start + 1; end < len(str) && end-start <= max_group_len; end++ {
-			slice := str[start:end]
-			if _, ok := freq_map[slice]; ok {
-				freq_map[slice] += 1
-			} else {
-				freq_map[slice] = 1
+			var child *freqTree
+			var ok bool
+			if child, ok = visited_node.children[the_byte]; !ok {
+				visited_node.children[the_byte] = &freqTree{
+					children: make(map[byte]*freqTree, 10),
+					count:    0}
+				child = visited_node.children[the_byte]
 			}
+			child.count++
+			visited_nodes[visited_index] = child
+
 		}
+
 	}
 
-	freqs = make([]HuffmanTree, len(freq_map))
-	i := 0
-	for item, freq := range freq_map {
-		freqs[i] = HuffmanTree{
-			item:   item,
-			weight: freq,
-			left:   nil,
-			right:  nil}
-		i += 1
-	}
+	root.print()
+	fmt.Printf("\n\n")
 
-	sort.Slice(freqs, func(i, j int) bool { return freqs[i].weight > freqs[j].weight })
+	// TODO
+	freqs = root.toHuffmanTreeSlice()
 	return
 }
 
@@ -86,7 +129,7 @@ func genHuffmanTree(nodes []HuffmanTree) (tree *HuffmanTree) {
 
 		nodes = nodes[:len(nodes)-1]
 		nodes[len(nodes)-1] = HuffmanTree{
-			item:   "",
+			bytes:  []byte{},
 			weight: left.weight + right.weight,
 			left:   left,
 			right:  right}
@@ -98,12 +141,13 @@ func genHuffmanTree(nodes []HuffmanTree) (tree *HuffmanTree) {
 }
 
 func (node *HuffmanTree) print(code string) {
-	if node.item == "" {
-		node.left.print(code + "0")
-		node.right.print(code + "1")
-	} else {
-		fmt.Printf("%d\t'%s'\t%s\n", node.weight, node.item, code)
+	if node.left == nil {
+		fmt.Printf("%d\t'%s'\t%s\n", node.weight, node.bytes, code)
+		return
 	}
+
+	node.left.print(code + "0")
+	node.right.print(code + "1")
 }
 
 func (node *HuffmanTree) Print() {
