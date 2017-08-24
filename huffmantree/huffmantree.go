@@ -51,6 +51,9 @@ func getFrequencies(input []byte, max_group_len int) (freqs []HuffmanTree) {
 					count:    0}
 				child = visited_node.children[the_byte]
 			}
+			if visited_node != root {
+				visited_node.count--
+			}
 			child.count++
 			visited_nodes[visited_index] = child
 
@@ -58,12 +61,12 @@ func getFrequencies(input []byte, max_group_len int) (freqs []HuffmanTree) {
 
 	}
 
-	root.Print()
-	fmt.Printf("\n\n")
+	//root.Print()
+	//fmt.Printf("\n\n")
 
 	root.Prune()
-	root.Print()
-	fmt.Printf("\n\n")
+	//root.Print()
+	//fmt.Printf("\n\n")
 
 	freqs = root.ToHuffmanTreeSlice()
 	return

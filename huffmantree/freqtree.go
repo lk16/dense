@@ -30,53 +30,68 @@ func (node *freqTree) Print() {
 	node.printRecursive(0)
 }
 
-func (node *freqTree) toHuffmanTreeSliceRecursive(slice *[]HuffmanTree, prefix *[]byte) {
+func (node *freqTree) toHuffmanTreeSliceRecursive(slice *[]HuffmanTree, length int, prefix *[]byte) {
 	*prefix = append(*prefix, byte(0))
 	for b, child := range node.children {
-		(*prefix)[len(*prefix)-1] = b
+		(*prefix)[length-1] = b
 
 		bytes := make([]byte, len(*prefix))
 		copy(bytes, *prefix)
 
-		child.toHuffmanTreeSliceRecursive(slice, prefix)
+		child.toHuffmanTreeSliceRecursive(slice, length+1, prefix)
+
+		if child.count == 0 {
+			continue
+		}
 
 		*slice = append(*slice, HuffmanTree{
 			bytes:  bytes,
-			weight: child.count,
+			weight: child.count * (length + 1),
 			left:   nil,
 			right:  nil})
 
 	}
-	*prefix = (*prefix)[:len(*prefix)-1]
+	*prefix = (*prefix)[:length-1]
 }
 
 func (node *freqTree) ToHuffmanTreeSlice() (slice []HuffmanTree) {
 	slice = []HuffmanTree{}
 	prefix := []byte{}
-	node.toHuffmanTreeSliceRecursive(&slice, &prefix)
+	node.toHuffmanTreeSliceRecursive(&slice, 1, &prefix)
 	return
 }
 
 func (node *freqTree) Prune() {
-	node.pruneRecursive(node, 0)
+	for child_byte, child := range node.children {
+		prefix := []byte{}
+		prefix = append(prefix, child_byte)
+		child.pruneRecursive(&prefix)
+	}
 }
 
-func (node *freqTree) pruneRecursive(root *freqTree, depth int) {
+func (node *freqTree) pruneRecursive(prefix *[]byte) (weight int) {
+
+	weight = node.count
+
+	subtree_weights := map[byte]int{}
 
 	for child_byte, child := range node.children {
-		// go depth first
-		child.pruneRecursive(root, depth+1)
+		*prefix = append(*prefix, child_byte)
+		subtree_weight := child.pruneRecursive(prefix)
+		*prefix = (*prefix)[:len(*prefix)-1]
 
-		if depth >= 1 && len(child.children) == 0 {
-
-			unpruned_ratio := float32(child.count) / float32(node.count)
-			pruned_ratio := float32(root.children[child_byte].count) / float32(root.count)
-
-			if pruned_ratio >= unpruned_ratio {
-				delete(node.children, child_byte)
-			}
-
-		}
-
+		subtree_weights[child_byte] = subtree_weight
+		weight += subtree_weight
 	}
+
+	minimum_ratio := 0.3
+
+	for child_byte, subtree_weight := range subtree_weights {
+		ratio := float64(subtree_weight) / float64(weight)
+		if ratio < minimum_ratio || subtree_weight < 20 {
+			node.count += subtree_weight
+			delete(node.children, child_byte)
+		}
+	}
+	return
 }
