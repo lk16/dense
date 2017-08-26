@@ -125,7 +125,7 @@ func (node *FrequencyTree) pruneRecursive() (weight int) {
 		weight += subtree_weight
 	}
 
-	minimum_weight := 0.3 * float64(weight)
+	minimum_weight := 0.5 * float64(weight)
 
 	for child_byte, subtree_weight := range subtree_weights {
 		if float64(subtree_weight) < minimum_weight || subtree_weight < 20 {
