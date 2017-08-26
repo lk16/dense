@@ -46,4 +46,19 @@ func main() {
 	fmt.Printf("\n")
 	fmt.Printf("%s\n", value_buff.String())
 
+	encoding_table := tree.GetEncodingTable()
+	fmt.Printf("\n")
+	for key, value := range encoding_table {
+		fmt.Printf("%s\t%v\n", string(key), value)
+	}
+
+	var encode_buff bytes.Buffer
+	_, _ = tree.Encode(&buf2, &encode_buff, *max_group_len)
+	fmt.Printf("tree shape bytes:\t%d\n", shape_buff.Len())
+	fmt.Printf("tree values bytes:\t%d\n", value_buff.Len())
+	fmt.Printf("encoded data bytes:\t%d\n", encode_buff.Len())
+	fmt.Printf("---------------------------- +\n")
+	fmt.Printf("Total bytes:\t\t%d\n",
+		shape_buff.Len()+value_buff.Len()+encode_buff.Len())
+
 }

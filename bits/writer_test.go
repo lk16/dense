@@ -7,7 +7,7 @@ import (
 
 func TestNewBitsWriter(t *testing.T) {
 	var buff bytes.Buffer
-	bw := NewBitsWriter(&buff)
+	bw := NewWriter(&buff)
 
 	if bw.writer != &buff || bw.slice != *NewSlice(0, 0x0) {
 		t.Errorf("NewBitsWriter failed")
@@ -16,7 +16,7 @@ func TestNewBitsWriter(t *testing.T) {
 
 func TestBitsWriterWriteBit(t *testing.T) {
 	var buff bytes.Buffer
-	bw := NewBitsWriter(&buff)
+	bw := NewWriter(&buff)
 
 	for i := 0; i < 7; i++ {
 		bits_written, err := bw.WriteBit(true)
@@ -45,7 +45,7 @@ func TestBitsWriterWriteBit(t *testing.T) {
 
 func TestBitsWriterWriteSlice(t *testing.T) {
 	var buff bytes.Buffer
-	bw := NewBitsWriter(&buff)
+	bw := NewWriter(&buff)
 
 	slice := *NewSlice(4, 0xF)
 
@@ -74,7 +74,7 @@ func TestBitsWriterWriteSlice(t *testing.T) {
 
 func TestBitsWriterFlushRemainingBits(t *testing.T) {
 	var buff bytes.Buffer
-	bw := NewBitsWriter(&buff)
+	bw := NewWriter(&buff)
 
 	slice := *NewSlice(4, 0xF)
 
