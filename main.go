@@ -1,64 +1,40 @@
 package main
 
 import (
-	"bytes"
-	"dense/huffmantree"
+	"dense/huffman"
 	"flag"
-	"fmt"
-	"io"
 	"os"
 )
 
 func main() {
 
-	file_name := flag.String("i", "", "Input file")
-	max_group_len := flag.Int("mfgl", 2, "Maximum length in bytes for grouping in algorithm")
+	flag_input_file := flag.String("i", "", "Input file")
+	flag_output_file := flag.String("o", "", "Output file")
+	flag_decode := flag.Bool("d", false, "If used, specifies decompressing.")
 	flag.Parse()
 
-	var file *os.File
+	input_file := os.Stdin
+	output_file := os.Stdout
+	var err error
 
-	if *file_name == "" {
-		file = os.Stdin
-	} else {
-		var err interface{}
-		file, err = os.Open(*file_name)
+	if *flag_input_file != "" {
+		input_file, err = os.Open(*flag_input_file)
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	if *max_group_len < 1 || *max_group_len >= 8 {
-		panic("Specified max_group_len is not allowed")
+	if *flag_output_file != "" {
+		output_file, err = os.Open(*flag_output_file)
+		if err != nil {
+			panic(err)
+		}
 	}
 
-	var buf1, buf2 bytes.Buffer
-	multi_writer := io.MultiWriter(&buf1, &buf2)
-	io.Copy(multi_writer, file)
-
-	tree := huffmantree.NewHuffmanTree(&buf1, *max_group_len)
-	tree.Print()
-
-	shape_buff := tree.ToShapeBuff()
-	fmt.Printf("\n")
-	fmt.Printf("%s\n", shape_buff.String())
-
-	value_buff := tree.ToValueBuff()
-	fmt.Printf("\n")
-	fmt.Printf("%s\n", value_buff.String())
-
-	encoding_table := tree.GetEncodingTable()
-	fmt.Printf("\n")
-	for key, value := range encoding_table {
-		fmt.Printf("%s\t%v\n", string(key), value)
+	if *flag_decode {
+		huffman.Decode(input_file, output_file)
+	} else {
+		huffman.Encode(input_file, output_file)
 	}
-
-	var encode_buff bytes.Buffer
-	_, _ = tree.Encode(&buf2, &encode_buff, *max_group_len)
-	fmt.Printf("tree shape bytes:\t%d\n", shape_buff.Len())
-	fmt.Printf("tree values bytes:\t%d\n", value_buff.Len())
-	fmt.Printf("encoded data bytes:\t%d\n", encode_buff.Len())
-	fmt.Printf("---------------------------- +\n")
-	fmt.Printf("Total bytes:\t\t%d\n",
-		shape_buff.Len()+value_buff.Len()+encode_buff.Len())
 
 }

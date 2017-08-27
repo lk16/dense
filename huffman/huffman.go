@@ -1,4 +1,4 @@
-package huffmantree
+package huffman
 
 import (
 	"bytes"
@@ -9,22 +9,82 @@ import (
 	"sort"
 )
 
+func Decode(reader io.Reader, writer io.Writer) (written_bits int64, err error) {
+	fmt.Printf("This is not implemented\n")
+	return
+}
+
+func Encode(reader io.Reader, writer io.Writer) (written_bits int64, err error) {
+
+	var freq_tree_reader, encode_reader bytes.Buffer
+
+	multi_writer := io.MultiWriter(&freq_tree_reader, &encode_reader)
+	io.Copy(multi_writer, reader)
+
+	freq_table, err := getFrequencyTable(&freq_tree_reader)
+	if err != nil {
+		return
+	}
+
+	huffman_tree := fromFreqencyTable(freq_table)
+	table := huffman_tree.GetEncodingTable()
+
+	written_bits, err = huffman_tree.doEncode(&encode_reader, writer, table)
+	return
+}
+
 type HuffmanTree struct {
-	bytes  []byte
-	weight int
+	bytes  byte
+	weight int64
 	left   *HuffmanTree
 	right  *HuffmanTree
 }
 
-func NewHuffmanTree(reader io.Reader, max_group_len int) (huffman_tree *HuffmanTree) {
+func getFrequencyTable(reader io.Reader) (table map[byte]int64, err error) {
 
-	freq_tree := NewFrequencyTree(reader, max_group_len)
-	freq_tree.Prune()
-	huffman_tree = fromSlice(freq_tree.ToHuffmanTreeSlice())
+	buff := make([]byte, 4096)
+	table = make(map[byte]int64, 256)
+
+	for {
+		var read_bytes int
+		read_bytes, err = reader.Read(buff)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				break
+			}
+			return
+		}
+
+		for _, b := range buff[:read_bytes] {
+			if _, ok := table[b]; !ok {
+				table[b] = 0
+			}
+			table[b]++
+		}
+	}
+
+	for key, value := range table {
+		if value == 0 {
+			delete(table, key)
+		}
+	}
+
 	return
 }
 
-func fromSlice(slice []HuffmanTree) (tree *HuffmanTree) {
+func fromFreqencyTable(table map[byte]int64) (tree *HuffmanTree) {
+
+	slice := make([]HuffmanTree, 0)
+
+	for key, value := range table {
+		slice = append(slice, HuffmanTree{
+			bytes:  key,
+			weight: value,
+			left:   nil,
+			right:  nil})
+	}
+
 	for len(slice) > 1 {
 		sort.Slice(slice, func(i, j int) bool { return slice[i].weight > slice[j].weight })
 
@@ -36,7 +96,7 @@ func fromSlice(slice []HuffmanTree) (tree *HuffmanTree) {
 
 		slice = slice[:len(slice)-1]
 		slice[len(slice)-1] = HuffmanTree{
-			bytes:  []byte{},
+			bytes:  byte(0),
 			weight: left.weight + right.weight,
 			left:   left,
 			right:  right}
@@ -107,26 +167,18 @@ func (node *HuffmanTree) ToValueBuff() (buff bytes.Buffer) {
 }
 
 func (node *HuffmanTree) toValueRecursive(buff *bytes.Buffer) {
-	if len(node.bytes) == 0 {
+	if node.left == nil {
 		node.left.toValueRecursive(buff)
 		node.right.toValueRecursive(buff)
 		return
 	}
 
-	if len(node.bytes) == 1 && node.bytes[0] != 'x' {
-		buff.WriteByte(node.bytes[0])
-	} else {
-		buff.WriteByte('x')
-		buff.WriteByte('0' + byte(len(node.bytes)))
-		buff.Write(node.bytes)
-		return
-	}
-
+	buff.WriteByte(node.bytes)
 	return
 }
 
-func (node *HuffmanTree) getEncodingTableRecursive(table *map[string]bits.Slice, slice bits.Slice) {
-	if len(node.bytes) == 0 {
+func (node *HuffmanTree) getEncodingTableRecursive(table *map[byte]bits.Slice, slice bits.Slice) {
+	if node.left == nil {
 		left := slice
 		left.AppendBit(false)
 		node.left.getEncodingTableRecursive(table, left)
@@ -138,38 +190,32 @@ func (node *HuffmanTree) getEncodingTableRecursive(table *map[string]bits.Slice,
 		return
 	}
 
-	(*table)[string(node.bytes)] = slice
+	(*table)[node.bytes] = slice
 
 }
 
-func (node *HuffmanTree) GetEncodingTable() (table map[string]bits.Slice) {
-	table = make(map[string]bits.Slice, 20)
+func (node *HuffmanTree) GetEncodingTable() (table map[byte]bits.Slice) {
+	table = make(map[byte]bits.Slice, 20)
 	node.getEncodingTableRecursive(&table, *bits.NewSlice(0, 0x0))
 	return
 }
 
-func (node *HuffmanTree) Encode(reader io.Reader, writer io.Writer, max_group_len int) (written_bits int64, write_err error) {
+func (node *HuffmanTree) doEncode(reader io.Reader, writer io.Writer, table map[byte]bits.Slice) (written_bits int64, write_err error) {
 	bits_writer := bits.NewWriter(writer)
-	table := node.GetEncodingTable()
-	buff := make([]byte, 1)
+	key_buff := make([]byte, 1)
 
 	var read_err error
 	var written int64
 
-	for read_err == nil {
-		key := []byte{}
-		for {
-			_, read_err = reader.Read(buff)
-			if read_err != nil {
-				break
+	for {
+		_, read_err = reader.Read(key_buff)
+		if read_err != nil {
+			if read_err != io.EOF {
+				panic(read_err)
 			}
-			key = append(key, buff[0])
-			if _, ok := table[string(key)]; !ok {
-				key = key[:len(key)-1]
-				break
-			}
+			break
 		}
-		slice := table[string(key)]
+		slice := table[key_buff[0]]
 		written, write_err = bits_writer.WriteSlice(&slice)
 		written_bits += written
 		if write_err != nil {
