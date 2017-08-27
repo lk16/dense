@@ -126,13 +126,8 @@ func (node *HuffmanTree) encodeTreeShape(writer io.Writer) (err error) {
 	var shape_buff bytes.Buffer
 	shape_buff_writer := bits.NewWriter(&shape_buff)
 
-	if err = node.encodeTreeShapeRecursive(shape_buff_writer); err != nil {
-		return
-	}
-
-	if _, err = shape_buff_writer.FlushRemainingBits(); err != nil {
-		return
-	}
+	node.encodeTreeShapeRecursive(shape_buff_writer)
+	shape_buff_writer.FlushRemainingBits()
 
 	len_buff := make([]byte, 8)
 	binary.LittleEndian.PutUint64(len_buff, uint64(shape_buff.Len()))
@@ -144,31 +139,23 @@ func (node *HuffmanTree) encodeTreeShape(writer io.Writer) (err error) {
 	return
 }
 
-func (node *HuffmanTree) encodeTreeShapeRecursive(bits_writer *bits.Writer) (err error) {
+func (node *HuffmanTree) encodeTreeShapeRecursive(bits_writer *bits.Writer) {
+
 	if node.left == nil {
-		_, err = bits_writer.WriteBit(false)
+		bits_writer.WriteBit(false)
 		return
 	}
 
-	if _, err = bits_writer.WriteBit(true); err != nil {
-		return
-	}
-
-	if err = node.left.encodeTreeShapeRecursive(bits_writer); err != nil {
-		return
-	}
-
-	err = node.right.encodeTreeShapeRecursive(bits_writer)
+	bits_writer.WriteBit(true)
+	node.left.encodeTreeShapeRecursive(bits_writer)
+	node.right.encodeTreeShapeRecursive(bits_writer)
 	return
-
 }
 
 func (node *HuffmanTree) encodeTreeLeaves(writer io.Writer) (err error) {
 
 	var leaves_buff bytes.Buffer
-	if err = node.encodeTreeLeavesRecursive(&leaves_buff); err != nil {
-		return
-	}
+	node.encodeTreeLeavesRecursive(&leaves_buff)
 
 	len_buff := make([]byte, 8)
 	binary.LittleEndian.PutUint64(len_buff, uint64(leaves_buff.Len()))
@@ -180,18 +167,14 @@ func (node *HuffmanTree) encodeTreeLeaves(writer io.Writer) (err error) {
 	return
 }
 
-func (node *HuffmanTree) encodeTreeLeavesRecursive(buff *bytes.Buffer) (err error) {
+func (node *HuffmanTree) encodeTreeLeavesRecursive(buff *bytes.Buffer) {
 	if node.left == nil {
-		if err = node.left.encodeTreeLeavesRecursive(buff); err != nil {
-			return
-		}
-
-		err = node.right.encodeTreeLeavesRecursive(buff)
+		node.left.encodeTreeLeavesRecursive(buff)
+		node.right.encodeTreeLeavesRecursive(buff)
 		return
 	}
 
-	err = buff.WriteByte(node.bytes)
-	return
+	buff.WriteByte(node.bytes)
 }
 
 func (node *HuffmanTree) getEncodingTableRecursive(table *map[byte]bits.Slice, slice bits.Slice) {
@@ -203,12 +186,10 @@ func (node *HuffmanTree) getEncodingTableRecursive(table *map[byte]bits.Slice, s
 		right := slice
 		right.AppendBit(true)
 		node.right.getEncodingTableRecursive(table, right)
-
 		return
 	}
 
 	(*table)[node.bytes] = slice
-
 }
 
 func (node *HuffmanTree) GetEncodingTable() (table map[byte]bits.Slice) {
