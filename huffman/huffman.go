@@ -9,27 +9,33 @@ import (
 	"sort"
 )
 
-func Decode(reader io.Reader, writer io.Writer) (written_bits int64, err error) {
-	fmt.Printf("This is not implemented\n")
-	return
-}
-
-func Encode(reader io.Reader, writer io.Writer) (written_bits int64, err error) {
+func Encode(reader io.Reader, writer io.Writer) (err error) {
 
 	var freq_tree_reader, encode_reader bytes.Buffer
 
 	multi_writer := io.MultiWriter(&freq_tree_reader, &encode_reader)
 	io.Copy(multi_writer, reader)
 
-	freq_table, err := getFrequencyTable(&freq_tree_reader)
+	tree, err := newTreeFromReader(&freq_tree_reader)
 	if err != nil {
 		return
 	}
 
-	huffman_tree := fromFreqencyTable(freq_table)
-	table := huffman_tree.GetEncodingTable()
+	if err = tree.encodeTreeShape(writer); err != nil {
+		return
+	}
 
-	written_bits, err = huffman_tree.doEncode(&encode_reader, writer, table)
+	if err = tree.encodeTreeLeaves(writer); err != nil {
+		return
+	}
+
+	table := tree.GetEncodingTable()
+	err = tree.encodeBody(&encode_reader, writer, table)
+	return
+}
+
+func Decode(reader io.Reader, writer io.Writer) (err error) {
+	fmt.Printf("Decompressing is not yet implemented\n")
 	return
 }
 
@@ -40,10 +46,10 @@ type HuffmanTree struct {
 	right  *HuffmanTree
 }
 
-func getFrequencyTable(reader io.Reader) (table map[byte]int64, err error) {
+func newTreeFromReader(reader io.Reader) (tree *HuffmanTree, err error) {
 
 	buff := make([]byte, 4096)
-	table = make(map[byte]int64, 256)
+	table := make(map[byte]int64, 256)
 
 	for {
 		var read_bytes int
@@ -64,20 +70,14 @@ func getFrequencyTable(reader io.Reader) (table map[byte]int64, err error) {
 		}
 	}
 
-	for key, value := range table {
-		if value == 0 {
-			delete(table, key)
-		}
-	}
-
-	return
-}
-
-func fromFreqencyTable(table map[byte]int64) (tree *HuffmanTree) {
-
 	slice := make([]HuffmanTree, 0)
 
 	for key, value := range table {
+
+		if value == 0 {
+			continue
+		}
+
 		slice = append(slice, HuffmanTree{
 			bytes:  key,
 			weight: value,
@@ -121,59 +121,76 @@ func (node *HuffmanTree) Print() {
 	node.print("")
 }
 
-func (node *HuffmanTree) ToShapeBuff() (buff bytes.Buffer) {
+func (node *HuffmanTree) encodeTreeShape(writer io.Writer) (err error) {
+
 	var shape_buff bytes.Buffer
 	shape_buff_writer := bits.NewWriter(&shape_buff)
-	bits_written, err := node.toShapeRecursive(shape_buff_writer)
-	if err != nil {
-		panic(err)
+
+	if err = node.encodeTreeShapeRecursive(shape_buff_writer); err != nil {
+		return
 	}
 
-	len_buff := make([]byte, 2)
-	binary.LittleEndian.PutUint16(len_buff, uint16(bits_written))
-	buff.Write(len_buff)
-	buff.Write(shape_buff.Bytes())
+	if _, err = shape_buff_writer.FlushRemainingBits(); err != nil {
+		return
+	}
+
+	len_buff := make([]byte, 8)
+	binary.LittleEndian.PutUint64(len_buff, uint64(shape_buff.Len()))
+	if _, err = writer.Write(len_buff); err != nil {
+		return
+	}
+
+	_, err = writer.Write(shape_buff.Bytes())
 	return
 }
 
-func (node *HuffmanTree) toShapeRecursive(bits_writer *bits.Writer) (bits_written int64, err error) {
+func (node *HuffmanTree) encodeTreeShapeRecursive(bits_writer *bits.Writer) (err error) {
 	if node.left == nil {
-		bits_written, err = bits_writer.WriteBit(false)
+		_, err = bits_writer.WriteBit(false)
 		return
 	}
 
-	bits_written, err = bits_writer.WriteBit(true)
-	if err != nil {
+	if _, err = bits_writer.WriteBit(true); err != nil {
 		return
 	}
 
-	var written int64
-
-	written, err = node.left.toShapeRecursive(bits_writer)
-	bits_written += written
-	if err != nil {
+	if err = node.left.encodeTreeShapeRecursive(bits_writer); err != nil {
 		return
 	}
 
-	written, err = node.right.toShapeRecursive(bits_writer)
-	bits_written += written
+	err = node.right.encodeTreeShapeRecursive(bits_writer)
 	return
 
 }
 
-func (node *HuffmanTree) ToValueBuff() (buff bytes.Buffer) {
-	node.toValueRecursive(&buff)
+func (node *HuffmanTree) encodeTreeLeaves(writer io.Writer) (err error) {
+
+	var leaves_buff bytes.Buffer
+	if err = node.encodeTreeLeavesRecursive(&leaves_buff); err != nil {
+		return
+	}
+
+	len_buff := make([]byte, 8)
+	binary.LittleEndian.PutUint64(len_buff, uint64(leaves_buff.Len()))
+	if _, err = writer.Write(len_buff); err != nil {
+		return
+	}
+
+	_, err = writer.Write(leaves_buff.Bytes())
 	return
 }
 
-func (node *HuffmanTree) toValueRecursive(buff *bytes.Buffer) {
+func (node *HuffmanTree) encodeTreeLeavesRecursive(buff *bytes.Buffer) (err error) {
 	if node.left == nil {
-		node.left.toValueRecursive(buff)
-		node.right.toValueRecursive(buff)
+		if err = node.left.encodeTreeLeavesRecursive(buff); err != nil {
+			return
+		}
+
+		err = node.right.encodeTreeLeavesRecursive(buff)
 		return
 	}
 
-	buff.WriteByte(node.bytes)
+	err = buff.WriteByte(node.bytes)
 	return
 }
 
@@ -200,30 +217,26 @@ func (node *HuffmanTree) GetEncodingTable() (table map[byte]bits.Slice) {
 	return
 }
 
-func (node *HuffmanTree) doEncode(reader io.Reader, writer io.Writer, table map[byte]bits.Slice) (written_bits int64, write_err error) {
+func (node *HuffmanTree) encodeBody(reader io.Reader, writer io.Writer, table map[byte]bits.Slice) error {
 	bits_writer := bits.NewWriter(writer)
 	key_buff := make([]byte, 1)
 
-	var read_err error
-	var written int64
-
 	for {
-		_, read_err = reader.Read(key_buff)
+		_, read_err := reader.Read(key_buff)
 		if read_err != nil {
 			if read_err != io.EOF {
-				panic(read_err)
+				return read_err
 			}
 			break
 		}
+
 		slice := table[key_buff[0]]
-		written, write_err = bits_writer.WriteSlice(&slice)
-		written_bits += written
-		if write_err != nil {
-			return
+
+		if _, write_err := bits_writer.WriteSlice(&slice); write_err != nil {
+			return write_err
 		}
 	}
 
-	written, write_err = bits_writer.FlushRemainingBits()
-	written_bits += written
-	return
+	_, write_err := bits_writer.FlushRemainingBits()
+	return write_err
 }

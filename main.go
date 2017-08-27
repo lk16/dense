@@ -3,6 +3,7 @@ package main
 import (
 	"dense/huffman"
 	"flag"
+	"fmt"
 	"os"
 )
 
@@ -25,16 +26,26 @@ func main() {
 	}
 
 	if *flag_output_file != "" {
-		output_file, err = os.Open(*flag_output_file)
+		if _, err := os.Stat(*flag_output_file); !os.IsNotExist(err) {
+			fmt.Printf("File '%s' exists already. Exiting.\n", *flag_output_file)
+			return
+		}
+
+		output_file, err = os.Create(*flag_output_file)
 		if err != nil {
-			panic(err)
+			fmt.Printf("Could not create file '%s': %s\n", *flag_output_file, err)
+			return
 		}
 	}
 
 	if *flag_decode {
-		huffman.Decode(input_file, output_file)
+		err = huffman.Decode(input_file, output_file)
 	} else {
-		huffman.Encode(input_file, output_file)
+		err = huffman.Encode(input_file, output_file)
+	}
+
+	if err != nil {
+		fmt.Printf("An error occorred: '%s'\n", err)
 	}
 
 }
