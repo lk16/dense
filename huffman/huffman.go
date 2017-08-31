@@ -9,6 +9,12 @@ import (
 	"sort"
 )
 
+const (
+	BLOCK_ID_SHAPE  = 0
+	BLOCK_ID_LEAVES = 1
+	BLOCK_ID_DATA   = 2
+)
+
 func Encode(reader io.Reader, writer io.Writer) (err error) {
 
 	var freq_tree_reader, encode_reader bytes.Buffer
@@ -17,6 +23,7 @@ func Encode(reader io.Reader, writer io.Writer) (err error) {
 	io.Copy(multi_writer, reader)
 
 	tree, err := newTreeFromReader(&freq_tree_reader)
+
 	if err != nil {
 		return
 	}
@@ -40,7 +47,7 @@ func Decode(reader io.Reader, writer io.Writer) (err error) {
 }
 
 type HuffmanTree struct {
-	bytes  byte
+	data   byte
 	weight int64
 	left   *HuffmanTree
 	right  *HuffmanTree
@@ -79,7 +86,7 @@ func newTreeFromReader(reader io.Reader) (tree *HuffmanTree, err error) {
 		}
 
 		slice = append(slice, HuffmanTree{
-			bytes:  key,
+			data:   key,
 			weight: value,
 			left:   nil,
 			right:  nil})
@@ -96,7 +103,7 @@ func newTreeFromReader(reader io.Reader) (tree *HuffmanTree, err error) {
 
 		slice = slice[:len(slice)-1]
 		slice[len(slice)-1] = HuffmanTree{
-			bytes:  byte(0),
+			data:   byte(0),
 			weight: left.weight + right.weight,
 			left:   left,
 			right:  right}
@@ -109,7 +116,7 @@ func newTreeFromReader(reader io.Reader) (tree *HuffmanTree, err error) {
 
 func (node *HuffmanTree) print(code string) {
 	if node.left == nil {
-		fmt.Printf("%d\t'%s'\t%s\n", node.weight, string(node.bytes), code)
+		fmt.Printf("%d\t'%s'\t%s\n", node.weight, string(node.data), code)
 		return
 	}
 
@@ -128,6 +135,8 @@ func (node *HuffmanTree) encodeTreeShape(writer io.Writer) (err error) {
 
 	node.encodeTreeShapeRecursive(shape_buff_writer)
 	shape_buff_writer.FlushRemainingBits()
+
+	writer.Write([]byte{BLOCK_ID_SHAPE})
 
 	len_buff := make([]byte, 8)
 	binary.LittleEndian.PutUint64(len_buff, uint64(shape_buff.Len()))
@@ -157,6 +166,8 @@ func (node *HuffmanTree) encodeTreeLeaves(writer io.Writer) (err error) {
 	var leaves_buff bytes.Buffer
 	node.encodeTreeLeavesRecursive(&leaves_buff)
 
+	writer.Write([]byte{BLOCK_ID_LEAVES})
+
 	len_buff := make([]byte, 8)
 	binary.LittleEndian.PutUint64(len_buff, uint64(leaves_buff.Len()))
 	if _, err = writer.Write(len_buff); err != nil {
@@ -168,17 +179,17 @@ func (node *HuffmanTree) encodeTreeLeaves(writer io.Writer) (err error) {
 }
 
 func (node *HuffmanTree) encodeTreeLeavesRecursive(buff *bytes.Buffer) {
-	if node.left == nil {
+	if node.left != nil {
 		node.left.encodeTreeLeavesRecursive(buff)
 		node.right.encodeTreeLeavesRecursive(buff)
 		return
 	}
 
-	buff.WriteByte(node.bytes)
+	buff.WriteByte(node.data)
 }
 
 func (node *HuffmanTree) getEncodingTableRecursive(table *map[byte]bits.Slice, slice bits.Slice) {
-	if node.left == nil {
+	if node.left != nil {
 		left := slice
 		left.AppendBit(false)
 		node.left.getEncodingTableRecursive(table, left)
@@ -189,7 +200,7 @@ func (node *HuffmanTree) getEncodingTableRecursive(table *map[byte]bits.Slice, s
 		return
 	}
 
-	(*table)[node.bytes] = slice
+	(*table)[node.data] = slice
 }
 
 func (node *HuffmanTree) GetEncodingTable() (table map[byte]bits.Slice) {
@@ -198,26 +209,43 @@ func (node *HuffmanTree) GetEncodingTable() (table map[byte]bits.Slice) {
 	return
 }
 
-func (node *HuffmanTree) encodeBody(reader io.Reader, writer io.Writer, table map[byte]bits.Slice) error {
-	bits_writer := bits.NewWriter(writer)
+func (node *HuffmanTree) encodeBody(reader io.Reader, writer io.Writer, table map[byte]bits.Slice) (err error) {
+
+	var body_buff bytes.Buffer
+	bits_writer := bits.NewWriter(&body_buff)
+
 	key_buff := make([]byte, 1)
 
 	for {
-		_, read_err := reader.Read(key_buff)
-		if read_err != nil {
-			if read_err != io.EOF {
-				return read_err
+
+		if _, err = reader.Read(key_buff); err != nil {
+			if err != io.EOF {
+				return err
 			}
 			break
 		}
 
 		slice := table[key_buff[0]]
+		bits_writer.WriteSlice(&slice)
+	}
 
-		if _, write_err := bits_writer.WriteSlice(&slice); write_err != nil {
-			return write_err
+	len_buff := make([]byte, 8)
+	binary.LittleEndian.PutUint64(len_buff, uint64(body_buff.Len()))
+
+	trailing_bit_count := byte(bits_writer.CountUnflushedBits())
+	bits_writer.FlushRemainingBits()
+
+	buffers := [][]byte{
+		[]byte{BLOCK_ID_DATA},
+		len_buff,
+		[]byte{trailing_bit_count},
+		body_buff.Bytes()}
+
+	for _, buffer := range buffers {
+		if _, err = writer.Write(buffer); err != nil {
+			return
 		}
 	}
 
-	_, write_err := bits_writer.FlushRemainingBits()
-	return write_err
+	return
 }

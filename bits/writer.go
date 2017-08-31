@@ -58,3 +58,7 @@ func (bitsWriter *Writer) doWrite() (bits_written int64, err error) {
 		}
 	}
 }
+
+func (bitsWriter *Writer) CountUnflushedBits() (count int) {
+	return bitsWriter.slice.length
+}

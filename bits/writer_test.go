@@ -94,3 +94,39 @@ func TestBitsWriterFlushRemainingBits(t *testing.T) {
 	}
 
 }
+
+func BitsWriterCountUnflushedBits(t *testing.T) {
+
+	var buff bytes.Buffer
+	bw := NewWriter(&buff)
+
+	slice := *NewSlice(4, 0xF)
+
+	if bw.CountUnflushedBits() != 0 {
+		t.Errorf("Expected 0, got %d", bw.CountUnflushedBits())
+	}
+
+	bw.WriteBit(true)
+
+	if bw.CountUnflushedBits() != 1 {
+		t.Errorf("Expected 1, got %d", bw.CountUnflushedBits())
+	}
+
+	bw.WriteSlice(&slice)
+
+	if bw.CountUnflushedBits() != 5 {
+		t.Errorf("Expected 1, got %d", bw.CountUnflushedBits())
+	}
+
+	bw.WriteSlice(&slice)
+
+	if bw.CountUnflushedBits() != 1 {
+		t.Errorf("Expected 1, got %d", bw.CountUnflushedBits())
+	}
+
+	bw.FlushRemainingBits()
+
+	if bw.CountUnflushedBits() != 0 {
+		t.Errorf("Expected 0, got %d", bw.CountUnflushedBits())
+	}
+}
