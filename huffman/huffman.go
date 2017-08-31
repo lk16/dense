@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"dense/bits"
 	"encoding/binary"
-	"fmt"
+	"errors"
 	"io"
 	"sort"
 )
@@ -22,7 +22,7 @@ func Encode(reader io.Reader, writer io.Writer) (err error) {
 	multi_writer := io.MultiWriter(&freq_tree_reader, &encode_reader)
 	io.Copy(multi_writer, reader)
 
-	tree, err := newTreeFromReader(&freq_tree_reader)
+	tree, err := generateTree(&freq_tree_reader)
 
 	if err != nil {
 		return
@@ -36,13 +36,18 @@ func Encode(reader io.Reader, writer io.Writer) (err error) {
 		return
 	}
 
-	table := tree.GetEncodingTable()
+	table := tree.getEncodingTable()
 	err = tree.encodeBody(&encode_reader, writer, table)
 	return
 }
 
 func Decode(reader io.Reader, writer io.Writer) (err error) {
-	fmt.Printf("Decompressing is not yet implemented\n")
+
+	_, err = decodeTreeShape(reader)
+	if err != nil {
+		return
+	}
+
 	return
 }
 
@@ -53,7 +58,7 @@ type HuffmanTree struct {
 	right  *HuffmanTree
 }
 
-func newTreeFromReader(reader io.Reader) (tree *HuffmanTree, err error) {
+func generateTree(reader io.Reader) (tree *HuffmanTree, err error) {
 
 	buff := make([]byte, 4096)
 	table := make(map[byte]int64, 256)
@@ -114,18 +119,60 @@ func newTreeFromReader(reader io.Reader) (tree *HuffmanTree, err error) {
 	return
 }
 
-func (node *HuffmanTree) print(code string) {
-	if node.left == nil {
-		fmt.Printf("%d\t'%s'\t%s\n", node.weight, string(node.data), code)
+func decodeTreeShape(reader io.Reader) (tree *HuffmanTree, err error) {
+	block_id_buff := make([]byte, 1)
+
+	if _, err = reader.Read(block_id_buff); err != nil {
 		return
 	}
 
-	node.left.print(code + "0")
-	node.right.print(code + "1")
-}
+	if block_id_buff[0] != BLOCK_ID_SHAPE {
+		err = errors.New("Unexpected block ID")
+		return
+	}
 
-func (node *HuffmanTree) Print() {
-	node.print("")
+	len_buff := make([]byte, 8)
+	if _, err = reader.Read(len_buff); err != nil {
+		return
+	}
+	shape_buff_len := binary.LittleEndian.Uint64(len_buff)
+
+	shape_buff := make([]byte, shape_buff_len)
+	if _, err = reader.Read(shape_buff); err != nil {
+		return
+	}
+
+	tree = &HuffmanTree{}
+
+	stack := []**HuffmanTree{
+		&tree.right,
+		&tree.left}
+
+	offset := 0
+	bits_left := 8
+
+	for len(stack) > 0 {
+
+		visiting_node := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if bits_left == 0 {
+			offset++
+			bits_left = 8
+		}
+
+		bits_left--
+
+		branch := shape_buff[offset]&0x80 == 0x80
+		shape_buff[offset] >>= 1
+
+		if branch {
+			*visiting_node = &HuffmanTree{}
+			stack = append(stack, &((*visiting_node).right))
+			stack = append(stack, &((*visiting_node).left))
+		}
+	}
+	return
 }
 
 func (node *HuffmanTree) encodeTreeShape(writer io.Writer) (err error) {
@@ -203,7 +250,7 @@ func (node *HuffmanTree) getEncodingTableRecursive(table *map[byte]bits.Slice, s
 	(*table)[node.data] = slice
 }
 
-func (node *HuffmanTree) GetEncodingTable() (table map[byte]bits.Slice) {
+func (node *HuffmanTree) getEncodingTable() (table map[byte]bits.Slice) {
 	table = make(map[byte]bits.Slice, 20)
 	node.getEncodingTableRecursive(&table, *bits.NewSlice(0, 0x0))
 	return

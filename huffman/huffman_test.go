@@ -8,13 +8,13 @@ import (
 	"testing"
 )
 
-func TestNewTreeFromReader(t *testing.T) {
+func TestGenerateTree(t *testing.T) {
 
 	var buff bytes.Buffer
 
 	// simple test
 	buff.Write(make([]byte, 100))
-	tree, err := newTreeFromReader(&buff)
+	tree, err := generateTree(&buff)
 
 	expected_node := HuffmanTree{
 		left:   nil,
@@ -24,16 +24,16 @@ func TestNewTreeFromReader(t *testing.T) {
 
 	if *tree != expected_node {
 
-		t.Errorf("NewTreeFromReader failed. Got tree %v, expected %v",
+		t.Errorf("generateTree failed. Got tree %v, expected %v",
 			*tree, expected_node)
 	}
 	if err != nil {
-		t.Errorf("NewTreeFromReader failed. Got error %s", err)
+		t.Errorf("generateTree failed. Got error %s", err)
 	}
 
 	// buffer bigger than 4k, not rounded to 4k boundary
 	buff.Write(make([]byte, 20000))
-	tree, err = newTreeFromReader(&buff)
+	tree, err = generateTree(&buff)
 
 	expected_node = HuffmanTree{
 		left:   nil,
@@ -43,25 +43,25 @@ func TestNewTreeFromReader(t *testing.T) {
 
 	if *tree != expected_node {
 
-		t.Errorf("NewTreeFromReader failed. Got tree %v, expected %v",
+		t.Errorf("generateTree failed. Got tree %v, expected %v",
 			*tree, expected_node)
 	}
 	if err != nil {
-		t.Errorf("NewTreeFromReader failed. Got error %s", err)
+		t.Errorf("generateTree failed. Got error %s", err)
 	}
 
 	// test huffman tree properties
 	byte_slice := []byte{0x1, 0x1, 0x2, 0x3}
 
 	buff.Write(byte_slice)
-	tree, err = newTreeFromReader(&buff)
+	tree, err = generateTree(&buff)
 
 	if err != nil {
-		t.Errorf("NewTreeFromReader failed. Got error %s", err)
+		t.Errorf("generateTree failed. Got error %s", err)
 	}
 
 	if tree.weight != 4 || tree.left.weight != 2 || tree.right.weight != 2 {
-		t.Errorf("NewTreeFromReader failed. Got weights %d %d %d",
+		t.Errorf("generateTree failed. Got weights %d %d %d",
 			tree.weight, tree.left.weight, tree.right.weight)
 	}
 }
@@ -232,10 +232,10 @@ func TestHuffmanTreeGetEncodingTable(t *testing.T) {
 		right: &HuffmanTree{
 			data: 0x01}}
 
-	table := tree.GetEncodingTable()
+	table := tree.getEncodingTable()
 
 	if len(table) != 5 {
-		t.Errorf("GetEncodingTable failed. Got table size %d", len(table))
+		t.Errorf("getEncodingTable failed. Got table size %d", len(table))
 	}
 
 	expected_table := map[byte]bits.Slice{
@@ -267,7 +267,7 @@ func TestHuffmanTreeEncodeBody(t *testing.T) {
 		right: &HuffmanTree{
 			data: 0x01}}
 
-	table := tree.GetEncodingTable()
+	table := tree.getEncodingTable()
 
 	var input, output, expected_output bytes.Buffer
 
