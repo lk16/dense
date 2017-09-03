@@ -92,3 +92,39 @@ func TestAppendPadding(t *testing.T) {
 	}
 
 }
+
+func TestPopLeadingBytes(t *testing.T) {
+
+	slice := NewSlice(0, 0x0)
+
+	output := slice.PopLeadingBytes()
+	if len(output) != 0 {
+		t.Errorf("Expected empty slice, got %v", output)
+	}
+	if slice.length != 0 {
+		t.Errorf("Expected slice length 0, got %d", slice.length)
+	}
+
+	slice = NewSlice(4, 0xF)
+	output = slice.PopLeadingBytes()
+	if len(output) != 0 {
+		t.Errorf("Expected empty slice, got %v", output)
+	}
+	if slice.length != 4 {
+		t.Errorf("Expected slice length 4, got %d", slice.length)
+	}
+
+	slice = NewSlice(20, 0xF)
+	output = slice.PopLeadingBytes()
+	if len(output) == 2 {
+		if output[0] != 0x0 || output[1] != 0x0 {
+			t.Errorf("Expected [0x0, 0x0], got %v", output)
+		}
+	} else {
+		t.Errorf("Expected empty slice, got %v", output)
+	}
+	if slice.length != 4 {
+		t.Errorf("Expected slice length 4, got %d", slice.length)
+	}
+
+}

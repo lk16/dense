@@ -54,13 +54,14 @@ func (slice *Slice) AppendPadding() {
 
 // Returns leading 8 bits as a byte
 // Ok indicates whether there are 8 bytes to be returned.
-func (slice *Slice) PopLeadingByte() (b byte, ok bool) {
+func (slice *Slice) PopLeadingBytes() (bytes []byte) {
 
-	if slice.length < 8 {
-		return b, false
+	bytes = []byte{}
+
+	for slice.length >= 8 {
+		b := byte(slice.data >> uint(slice.length-8))
+		bytes = append(bytes, b)
+		slice.length -= 8
 	}
-
-	b = byte(slice.data >> uint(slice.length-8))
-	slice.length -= 8
-	return b, true
+	return
 }

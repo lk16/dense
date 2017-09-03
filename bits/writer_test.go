@@ -18,27 +18,14 @@ func TestBitsWriterWriteBit(t *testing.T) {
 	var buff bytes.Buffer
 	bw := NewWriter(&buff)
 
-	for i := 0; i < 7; i++ {
-		bits_written, err := bw.WriteBit(true)
-		if bits_written != 0 {
-			t.Errorf("Expected 0, got %d", bits_written)
-		}
-		if err != nil {
-			t.Errorf("Got error '%s'", err)
-		}
-	}
-
-	bits_written, err := bw.WriteBit(true)
-	if bits_written != 8 {
-		t.Errorf("Expected 8, got %d", bits_written)
-	}
-	if err != nil {
-		t.Errorf("Got error '%s'", err)
+	// writes 1111 0000 = 0xF0
+	for i := 0; i < 8; i++ {
+		bw.WriteBit(i < 4)
 	}
 
 	bytes := buff.Bytes()
-	if len(bytes) != 1 || bytes[0] != 0xFF {
-		t.Errorf("Expected [0xFF], got %v", bytes)
+	if len(bytes) != 1 || bytes[0] != 0xF0 {
+		t.Errorf("Expected [0xF0], got %v", bytes)
 	}
 
 }
@@ -49,21 +36,8 @@ func TestBitsWriterWriteSlice(t *testing.T) {
 
 	slice := *NewSlice(4, 0xF)
 
-	bits_written, err := bw.WriteSlice(&slice)
-	if bits_written != 0 {
-		t.Errorf("Expected 0, got %d", bits_written)
-	}
-	if err != nil {
-		t.Errorf("Got error '%s'", err)
-	}
-
-	bits_written, err = bw.WriteSlice(&slice)
-	if bits_written != 8 {
-		t.Errorf("Expected 0, got %d", bits_written)
-	}
-	if err != nil {
-		t.Errorf("Got error '%s'", err)
-	}
+	bw.WriteSlice(&slice)
+	bw.WriteSlice(&slice)
 
 	bytes := buff.Bytes()
 	if len(bytes) != 1 || bytes[0] != 0xFF {
@@ -72,21 +46,14 @@ func TestBitsWriterWriteSlice(t *testing.T) {
 
 }
 
-func TestBitsWriterFlushRemainingBits(t *testing.T) {
+func TestBitsWriterFlushBits(t *testing.T) {
 	var buff bytes.Buffer
 	bw := NewWriter(&buff)
 
 	slice := *NewSlice(4, 0xF)
 
-	bits_written, err := bw.WriteSlice(&slice)
-	if bits_written != 0 {
-		t.Errorf("Expected 0, got %d", bits_written)
-	}
-	if err != nil {
-		t.Errorf("Got error '%s'", err)
-	}
-
-	bw.FlushRemainingBits()
+	bw.WriteSlice(&slice)
+	bw.FlushBits()
 
 	bytes := buff.Bytes()
 	if len(bytes) != 1 || bytes[0] != 0xF0 {
@@ -124,7 +91,7 @@ func BitsWriterCountUnflushedBits(t *testing.T) {
 		t.Errorf("Expected 1, got %d", bw.CountUnflushedBits())
 	}
 
-	bw.FlushRemainingBits()
+	bw.FlushBits()
 
 	if bw.CountUnflushedBits() != 0 {
 		t.Errorf("Expected 0, got %d", bw.CountUnflushedBits())

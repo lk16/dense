@@ -9,56 +9,39 @@ type Writer struct {
 	slice  Slice
 }
 
-// Creates a new bitsWriter
-func NewWriter(writer io.Writer) (bitsWriter *Writer) {
+// Creates a new writer
+func NewWriter(writer io.Writer) *Writer {
 	return &Writer{
 		writer: writer,
 		slice:  *NewSlice(0, 0x0)}
 }
 
 // Writes a bit
-func (bitsWriter *Writer) WriteBit(bit bool) (bits_written int64, err error) {
-	bitsWriter.slice.AppendBit(bit)
-	bits_written, err = bitsWriter.doWrite()
-	return
+func (writer *Writer) WriteBit(bit bool) error {
+	writer.slice.AppendBit(bit)
+	return writer.doWrite()
 }
 
 // Writes a slice of bits
-func (bitsWriter *Writer) WriteSlice(slice *Slice) (bits_written int64, err error) {
-	bitsWriter.slice.AppendSlice(slice)
-	bits_written, err = bitsWriter.doWrite()
+func (writer *Writer) WriteSlice(slice *Slice) error {
+	writer.slice.AppendSlice(slice)
+	return writer.doWrite()
+}
+
+// Count number of unflushed bits since the last written byte
+func (writer *Writer) CountUnflushedBits() (count int) {
+	count = writer.slice.length
 	return
 }
 
 // Pad and write last bits
-func (bitsWriter *Writer) FlushRemainingBits() (bits_written int64, err error) {
-	bits_left := int64(bitsWriter.slice.length)
-
-	bitsWriter.slice.AppendPadding()
-
-	var bytes_written int64
-	bytes_written, err = bitsWriter.doWrite()
-	if bytes_written == 0 {
-		return 0, err
-	}
-	return bits_left, err
+func (writer *Writer) FlushBits() (err error) {
+	writer.slice.AppendPadding()
+	return writer.doWrite()
 }
 
-func (bitsWriter *Writer) doWrite() (bits_written int64, err error) {
-	var bytes_written int
-	for {
-		b, ok := bitsWriter.slice.PopLeadingByte()
-		if !ok {
-			return
-		}
-		bytes_written, err = bitsWriter.writer.Write([]byte{b})
-		bits_written += int64(8 * bytes_written)
-		if err != nil {
-			return
-		}
-	}
-}
-
-func (bitsWriter *Writer) CountUnflushedBits() (count int) {
-	return bitsWriter.slice.length
+func (writer *Writer) doWrite() (err error) {
+	bytes := writer.slice.PopLeadingBytes()
+	_, err = writer.writer.Write(bytes)
+	return
 }

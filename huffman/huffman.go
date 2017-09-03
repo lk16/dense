@@ -137,8 +137,10 @@ func decodeTreeShape(reader io.Reader) (tree *HuffmanTree, err error) {
 	}
 	shape_buff_len := binary.LittleEndian.Uint64(len_buff)
 
-	shape_buff := make([]byte, shape_buff_len)
-	if _, err = reader.Read(shape_buff); err != nil {
+	var shape_buff bytes.Buffer
+
+	_, err = io.CopyN(&shape_buff, reader, int64(shape_buff_len))
+	if err != nil {
 		return
 	}
 
@@ -148,25 +150,20 @@ func decodeTreeShape(reader io.Reader) (tree *HuffmanTree, err error) {
 		&tree.right,
 		&tree.left}
 
-	offset := 0
-	bits_left := 8
+	bits_reader := bits.NewReader(&shape_buff)
 
 	for len(stack) > 0 {
 
 		visiting_node := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 
-		if bits_left == 0 {
-			offset++
-			bits_left = 8
+		bit, err := bits_reader.ReadBit()
+
+		if err != nil {
+			return tree, err
 		}
 
-		bits_left--
-
-		branch := shape_buff[offset]&0x80 == 0x80
-		shape_buff[offset] >>= 1
-
-		if branch {
+		if bit {
 			*visiting_node = &HuffmanTree{}
 			stack = append(stack, &((*visiting_node).right))
 			stack = append(stack, &((*visiting_node).left))
@@ -181,7 +178,7 @@ func (node *HuffmanTree) encodeTreeShape(writer io.Writer) (err error) {
 	shape_buff_writer := bits.NewWriter(&shape_buff)
 
 	node.encodeTreeShapeRecursive(shape_buff_writer)
-	shape_buff_writer.FlushRemainingBits()
+	shape_buff_writer.FlushBits()
 
 	writer.Write([]byte{BLOCK_ID_SHAPE})
 
@@ -280,7 +277,7 @@ func (node *HuffmanTree) encodeBody(reader io.Reader, writer io.Writer, table ma
 	binary.LittleEndian.PutUint64(len_buff, uint64(body_buff.Len()))
 
 	trailing_bit_count := byte(bits_writer.CountUnflushedBits())
-	bits_writer.FlushRemainingBits()
+	bits_writer.FlushBits()
 
 	buffers := [][]byte{
 		[]byte{BLOCK_ID_DATA},
