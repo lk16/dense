@@ -21,10 +21,6 @@ Example with filename parameters
 
 ``$ dense -d -i testfile.dense -o testfile.out``
 
-``$ cat testfile.out``
-
-``$ this is some content``
-
 Example with stdin/stdout
 -----------
 ``$ dense <testfile >testfile.dense``
