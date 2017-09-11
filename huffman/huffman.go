@@ -103,6 +103,20 @@ func generateTree(reader io.Reader) (tree *HuffmanTree, err error) {
 			right:  nil})
 	}
 
+	if len(slice) == 0 {
+		// No input data. Put a useless root in the tree
+		tree = &HuffmanTree{}
+		return
+	}
+	if len(slice) == 1 {
+		// Only one byte value in input. Put dummy node as sibling.
+		tree = &HuffmanTree{
+			left:   &slice[0],
+			right:  &HuffmanTree{},
+			weight: slice[0].weight}
+		return
+	}
+
 	for len(slice) > 1 {
 		sort.Slice(slice, func(i, j int) bool { return slice[i].weight > slice[j].weight })
 
@@ -121,6 +135,7 @@ func generateTree(reader io.Reader) (tree *HuffmanTree, err error) {
 
 	}
 	tree = new(HuffmanTree)
+
 	*tree = slice[0]
 	return
 }

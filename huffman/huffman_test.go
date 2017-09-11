@@ -18,13 +18,14 @@ func TestGenerateTree(t *testing.T) {
 	tree, err := generateTree(&buff)
 
 	expected_node := HuffmanTree{
-		left:   nil,
-		right:  nil,
+		left: &HuffmanTree{
+			weight: 100,
+			data:   byte(0x0)},
+		right:  &HuffmanTree{},
 		weight: 100,
 		data:   byte(0)}
 
-	if *tree != expected_node {
-
+	if !reflect.DeepEqual(*tree, expected_node) {
 		t.Errorf("generateTree failed. Got tree %v, expected %v",
 			*tree, expected_node)
 	}
@@ -37,12 +38,14 @@ func TestGenerateTree(t *testing.T) {
 	tree, err = generateTree(&buff)
 
 	expected_node = HuffmanTree{
-		left:   nil,
-		right:  nil,
+		left: &HuffmanTree{
+			weight: 20000,
+			data:   byte(0x0)},
+		right:  &HuffmanTree{},
 		weight: 20000,
 		data:   byte(0)}
 
-	if *tree != expected_node {
+	if !reflect.DeepEqual(*tree, expected_node) {
 
 		t.Errorf("generateTree failed. Got tree %v, expected %v",
 			*tree, expected_node)
@@ -543,4 +546,42 @@ func TestHuffmanTreeDecodeLeaves(t *testing.T) {
 	if !reflect.DeepEqual(with_leaf_data, without_leaf_data) {
 		t.Errorf("Unexpected tree: %v", without_leaf_data)
 	}
+}
+
+func TestHuffmanEncodeDecode(t *testing.T) {
+
+	encode_decode := func(input []byte) (output []byte, err error) {
+		var reader, buff, writer bytes.Buffer
+		reader.Write(input)
+
+		err = Encode(&reader, &buff)
+		if err != nil {
+			return
+		}
+
+		err = Decode(&buff, &writer)
+		output = writer.Bytes()
+		return
+	}
+
+	for length := 0; length < 100; length++ {
+		for n := 0; n < 100; n++ {
+
+			input := make([]byte, length)
+
+			for i, _ := range input {
+				input[i] = byte(rand.Int())
+			}
+
+			output, err := encode_decode(input)
+			if err != nil {
+				t.Errorf("Got unexpected error '%s'", err.Error())
+			}
+
+			if !bytes.Equal(input, output) {
+				t.Errorf("Expected '%v', got '%v'", input, output)
+			}
+		}
+	}
+
 }
