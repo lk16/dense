@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dense/bits"
 	"encoding/binary"
+	"math/rand"
 	"reflect"
 	"testing"
 )
@@ -312,5 +313,234 @@ func TestHuffmanTreeEncodeBody(t *testing.T) {
 
 	if !bytes.Equal(expected_output.Bytes(), output.Bytes()) {
 		t.Errorf("Expected %v, got %v", expected_output.Bytes(), output.Bytes())
+	}
+}
+
+func AssertPanic(t *testing.T) {
+	if ok := recover(); ok == nil {
+		t.Errorf("AssertPanic failed")
+	}
+}
+
+func TestHuffmanDecodeTreeShape(t *testing.T) {
+
+	var buff bytes.Buffer
+
+	// invalid block id header
+	buff.WriteByte(BLOCK_ID_DATA)
+	_, err := decodeTreeShape(&buff)
+
+	if err == nil {
+		t.Errorf("Expected error, got nil")
+	}
+
+	if err.Error() != "Unexpected block ID" {
+		t.Errorf("Unexpected error %s", err)
+	}
+
+	buff.Reset()
+
+	len_buff := make([]byte, 8)
+
+	binary.LittleEndian.PutUint64(len_buff, uint64(1))
+
+	buff.WriteByte(BLOCK_ID_SHAPE)
+	buff.Write(len_buff)
+
+	// 0 for tree
+	// 0000000 for padding
+	buff.WriteByte(0x00)
+
+	tree, err := decodeTreeShape(&buff)
+
+	if err != nil {
+		t.Errorf("Got error %s", err)
+	}
+
+	if !(tree != nil && tree.left == nil && tree.right == nil) {
+		t.Errorf("Unexpected tree: %+v", tree)
+	}
+
+	buff.Reset()
+
+	buff.WriteByte(BLOCK_ID_SHAPE)
+
+	binary.LittleEndian.PutUint64(len_buff, 1)
+	buff.Write(len_buff)
+	// 100 for tree
+	// 00000 for padding
+	buff.Write([]byte{0x80})
+
+	tree, err = decodeTreeShape(&buff)
+
+	if err != nil {
+		t.Errorf("Got error %s", err)
+	}
+
+	if !(tree != nil &&
+		tree.left != nil && tree.left.left == nil && tree.left.right == nil &&
+		tree.right != nil && tree.right.left == nil && tree.right.right == nil) {
+		t.Errorf("Unexpected tree: %v", tree)
+	}
+
+	buff.Reset()
+
+	buff.WriteByte(BLOCK_ID_SHAPE)
+
+	binary.LittleEndian.PutUint64(len_buff, 2)
+	buff.Write(len_buff)
+	// 111001000 for tree
+	// 0000000 for padding
+	buff.Write([]byte{0xE4, 0x00})
+
+	tree, err = decodeTreeShape(&buff)
+
+	if err != nil {
+		t.Errorf("Got error %s", err)
+	}
+
+	expected_tree := &HuffmanTree{ // 1
+		left: &HuffmanTree{ // 1
+			left: &HuffmanTree{ // 1
+				left:  &HuffmanTree{},  // 0
+				right: &HuffmanTree{}}, // 0
+			right: &HuffmanTree{ // 1
+				left:  &HuffmanTree{},   // 0
+				right: &HuffmanTree{}}}, // 0
+		right: &HuffmanTree{}} // 0
+
+	if !reflect.DeepEqual(tree, expected_tree) {
+		t.Errorf("Unexpected tree: %v", tree)
+	}
+}
+
+func TestHuffmanTreeEncodeDecodeRandom(t *testing.T) {
+
+	random_tree := func(n int) (tree *HuffmanTree) {
+
+		tree = &HuffmanTree{}
+
+		for i := 0; i < n; i++ {
+			node := tree
+
+			for node.left != nil {
+				if rand.Intn(2) == 0 {
+					node = node.left
+				} else {
+					node = node.right
+				}
+			}
+
+			node.left = &HuffmanTree{}
+			node.right = &HuffmanTree{}
+		}
+
+		return tree
+	}
+
+	var buff bytes.Buffer
+
+	for size := 0; size < 50; size++ {
+
+		for n := 0; n < 10; n++ {
+
+			input_tree := random_tree(size)
+			input_tree.encodeTreeShape(&buff)
+
+			output_tree, err := decodeTreeShape(&buff)
+
+			if err != nil {
+				t.Errorf("Got error %s", err)
+			}
+
+			if !reflect.DeepEqual(input_tree, output_tree) {
+				t.Errorf("Unexpected tree: %v", output_tree)
+			}
+		}
+
+	}
+
+}
+
+func TestHuffmanTreeDecodeLeaves(t *testing.T) {
+
+	with_leaf_data := &HuffmanTree{
+		data: 0x01}
+
+	without_leaf_data := &HuffmanTree{}
+
+	var buff bytes.Buffer
+
+	with_leaf_data.encodeTreeLeaves(&buff)
+
+	err := without_leaf_data.decodeTreeLeaves(&buff)
+
+	if err != nil {
+		t.Errorf("Got error %s", err)
+	}
+
+	if !reflect.DeepEqual(with_leaf_data, without_leaf_data) {
+		t.Errorf("Unexpected tree: %v", without_leaf_data)
+	}
+
+	// zero byte as data
+	with_leaf_data = &HuffmanTree{
+		data: 0x00}
+
+	without_leaf_data = &HuffmanTree{}
+
+	with_leaf_data.encodeTreeLeaves(&buff)
+
+	err = without_leaf_data.decodeTreeLeaves(&buff)
+
+	if err != nil {
+		t.Errorf("Got error %s", err)
+	}
+
+	if !reflect.DeepEqual(with_leaf_data, without_leaf_data) {
+		t.Errorf("Unexpected tree: %v", without_leaf_data)
+	}
+
+	// bigger tree
+	with_leaf_data = &HuffmanTree{
+		left: &HuffmanTree{
+			left: &HuffmanTree{
+				left: &HuffmanTree{
+					left: &HuffmanTree{
+						data: 0xBB},
+					right: &HuffmanTree{
+						data: 0x99}},
+				right: &HuffmanTree{
+					data: 0xC0}},
+			right: &HuffmanTree{
+				left: &HuffmanTree{
+					data: 0xFF},
+				right: &HuffmanTree{
+					data: 0x00}}},
+		right: &HuffmanTree{
+			data: 0x01}}
+
+	without_leaf_data = &HuffmanTree{
+		left: &HuffmanTree{
+			left: &HuffmanTree{
+				left: &HuffmanTree{
+					left:  &HuffmanTree{},
+					right: &HuffmanTree{}},
+				right: &HuffmanTree{}},
+			right: &HuffmanTree{
+				left:  &HuffmanTree{},
+				right: &HuffmanTree{}}},
+		right: &HuffmanTree{}}
+
+	with_leaf_data.encodeTreeLeaves(&buff)
+
+	err = without_leaf_data.decodeTreeLeaves(&buff)
+
+	if err != nil {
+		t.Errorf("Got error %s", err)
+	}
+
+	if !reflect.DeepEqual(with_leaf_data, without_leaf_data) {
+		t.Errorf("Unexpected tree: %v", without_leaf_data)
 	}
 }
