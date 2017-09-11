@@ -1,9 +1,9 @@
 package main
 
 import (
-	"dense/huffman"
 	"flag"
 	"fmt"
+	"github.com/lk16/dense/huffman"
 	"os"
 )
 
