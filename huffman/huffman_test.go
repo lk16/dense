@@ -283,11 +283,12 @@ func TestHuffmanTreeEncodeBody(t *testing.T) {
 	}
 
 	len_buff := make([]byte, 8)
-	binary.LittleEndian.PutUint64(len_buff, uint64(0))
+	// expect 1 byte for trailing bits field
+	binary.LittleEndian.PutUint64(len_buff, uint64(1))
 
 	expected_output.WriteByte(BLOCK_ID_DATA)
 	expected_output.Write(len_buff)
-	expected_output.WriteByte(0x0)
+	expected_output.WriteByte(0x0) // trailing bits
 
 	if !bytes.Equal(expected_output.Bytes(), output.Bytes()) {
 		t.Errorf("Expected %v, got %v", expected_output.Bytes(), output.Bytes())
@@ -307,7 +308,8 @@ func TestHuffmanTreeEncodeBody(t *testing.T) {
 		t.Errorf("encodeTreeLeaves failed. Got error %s", err)
 	}
 
-	binary.LittleEndian.PutUint64(len_buff, uint64(1))
+	// 1 for trailing bit field + 2 for data
+	binary.LittleEndian.PutUint64(len_buff, uint64(3))
 
 	expected_output.WriteByte(BLOCK_ID_DATA)
 	expected_output.Write(len_buff)
@@ -565,7 +567,7 @@ func TestHuffmanEncodeDecode(t *testing.T) {
 	}
 
 	for length := 0; length < 100; length++ {
-		for n := 0; n < 100; n++ {
+		for n := 0; n < 20; n++ {
 
 			input := make([]byte, length)
 
@@ -581,6 +583,10 @@ func TestHuffmanEncodeDecode(t *testing.T) {
 			if !bytes.Equal(input, output) {
 				t.Errorf("Expected '%v', got '%v'", input, output)
 			}
+		}
+
+		if t.Failed() {
+			t.FailNow()
 		}
 	}
 

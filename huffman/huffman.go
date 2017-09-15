@@ -201,15 +201,7 @@ func (node *HuffmanTree) encodeTreeShape(writer io.Writer) (err error) {
 	node.encodeTreeShapeRecursive(shape_buff_writer)
 	shape_buff_writer.FlushBits()
 
-	writer.Write([]byte{BLOCK_ID_SHAPE})
-
-	len_buff := make([]byte, 8)
-	binary.LittleEndian.PutUint64(len_buff, uint64(shape_buff.Len()))
-	if _, err = writer.Write(len_buff); err != nil {
-		return
-	}
-
-	_, err = writer.Write(shape_buff.Bytes())
+	_, err = writeBlock(writer, BLOCK_ID_SHAPE, shape_buff)
 	return
 }
 
@@ -269,20 +261,33 @@ func (node *HuffmanTree) encodeTreeShapeRecursive(bits_writer *bits.Writer) {
 	return
 }
 
+func writeBlock(writer io.Writer, block_id byte, block_data bytes.Buffer) (n int, err error) {
+
+	block_len := make([]byte, 8)
+	binary.LittleEndian.PutUint64(block_len, uint64(block_data.Len()))
+
+	block := [][]byte{
+		[]byte{block_id},
+		block_len,
+		block_data.Bytes()}
+
+	for _, bytes := range block {
+		nn, err := writer.Write(bytes)
+		n += nn
+		if err != nil {
+			return n, err
+		}
+	}
+
+	return
+}
+
 func (node *HuffmanTree) encodeTreeLeaves(writer io.Writer) (err error) {
 
 	var leaves_buff bytes.Buffer
 	node.encodeTreeLeavesRecursive(&leaves_buff)
 
-	writer.Write([]byte{BLOCK_ID_LEAVES})
-
-	len_buff := make([]byte, 8)
-	binary.LittleEndian.PutUint64(len_buff, uint64(leaves_buff.Len()))
-	if _, err = writer.Write(len_buff); err != nil {
-		return
-	}
-
-	_, err = writer.Write(leaves_buff.Bytes())
+	_, err = writeBlock(writer, BLOCK_ID_LEAVES, leaves_buff)
 	return
 }
 
@@ -319,8 +324,8 @@ func (node *HuffmanTree) getEncodingTable() (table map[byte]bits.Slice) {
 
 func (node *HuffmanTree) encodeBody(reader io.Reader, writer io.Writer, table map[byte]bits.Slice) (err error) {
 
-	var body_buff bytes.Buffer
-	bits_writer := bits.NewWriter(&body_buff)
+	var body_buff, body_data_buff bytes.Buffer
+	bits_writer := bits.NewWriter(&body_data_buff)
 
 	key_buff := make([]byte, 1)
 
@@ -337,24 +342,13 @@ func (node *HuffmanTree) encodeBody(reader io.Reader, writer io.Writer, table ma
 		bits_writer.WriteSlice(&slice)
 	}
 
-	len_buff := make([]byte, 8)
-	binary.LittleEndian.PutUint64(len_buff, uint64(body_buff.Len()))
-
 	trailing_bit_count := byte(bits_writer.CountUnflushedBits())
 	bits_writer.FlushBits()
 
-	buffers := [][]byte{
-		[]byte{BLOCK_ID_DATA},
-		len_buff,
-		[]byte{trailing_bit_count},
-		body_buff.Bytes()}
+	body_buff.WriteByte(trailing_bit_count)
+	body_buff.Write(body_data_buff.Bytes())
 
-	for _, buffer := range buffers {
-		if _, err = writer.Write(buffer); err != nil {
-			return
-		}
-	}
-
+	_, err = writeBlock(writer, BLOCK_ID_DATA, body_buff)
 	return
 }
 
@@ -381,12 +375,15 @@ func (tree *HuffmanTree) decodeBody(reader io.Reader, writer io.Writer) (err err
 		return
 	}
 
+	// trailing_bit_count byte is included in data_len
+	data_len -= 1
+
 	trailing_bit_count := trailing_bit_count_buff[0]
 
-	bits_left := (8 * data_len) + uint64(trailing_bit_count)
+	bits_left := (8 * data_len)
 
 	if trailing_bit_count != 0 {
-		data_len++
+		bits_left = (8 * (data_len - 1)) + uint64(trailing_bit_count)
 	}
 
 	var data_buff bytes.Buffer
