@@ -313,7 +313,7 @@ func TestHuffmanTreeEncodeBody(t *testing.T) {
 
 	expected_output.WriteByte(BLOCK_ID_DATA)
 	expected_output.Write(len_buff)
-	expected_output.WriteByte(0x1)
+	expected_output.WriteByte(0x7)
 	expected_output.Write([]byte{0x49, 0x00})
 
 	if !bytes.Equal(expected_output.Bytes(), output.Bytes()) {
@@ -331,20 +331,6 @@ func TestHuffmanDecodeTreeShape(t *testing.T) {
 
 	var buff bytes.Buffer
 
-	// invalid block id header
-	buff.WriteByte(BLOCK_ID_DATA)
-	_, err := decodeTreeShape(&buff)
-
-	if err == nil {
-		t.Errorf("Expected error, got nil")
-	}
-
-	if err.Error() != "Unexpected block ID" {
-		t.Errorf("Unexpected error %s", err)
-	}
-
-	buff.Reset()
-
 	len_buff := make([]byte, 8)
 
 	binary.LittleEndian.PutUint64(len_buff, uint64(1))
@@ -356,11 +342,15 @@ func TestHuffmanDecodeTreeShape(t *testing.T) {
 	// 0000000 for padding
 	buff.WriteByte(0x00)
 
-	tree, err := decodeTreeShape(&buff)
+	state := decodeState{}
+
+	err := state.decodeTreeShape(buff)
 
 	if err != nil {
 		t.Errorf("Got error %s", err)
 	}
+
+	tree := state.tree
 
 	if !(tree != nil && tree.left == nil && tree.right == nil) {
 		t.Errorf("Unexpected tree: %+v", tree)
@@ -376,16 +366,19 @@ func TestHuffmanDecodeTreeShape(t *testing.T) {
 	// 00000 for padding
 	buff.Write([]byte{0x80})
 
-	tree, err = decodeTreeShape(&buff)
+	state = decodeState{}
+
+	err = state.decodeTreeShape(buff)
 
 	if err != nil {
 		t.Errorf("Got error %s", err)
 	}
 
+	tree = state.tree
 	if !(tree != nil &&
 		tree.left != nil && tree.left.left == nil && tree.left.right == nil &&
 		tree.right != nil && tree.right.left == nil && tree.right.right == nil) {
-		t.Errorf("Unexpected tree: %v", tree)
+		t.Errorf("Got:\n%s", tree.String())
 	}
 
 	buff.Reset()
@@ -398,7 +391,9 @@ func TestHuffmanDecodeTreeShape(t *testing.T) {
 	// 0000000 for padding
 	buff.Write([]byte{0xE4, 0x00})
 
-	tree, err = decodeTreeShape(&buff)
+	state = decodeState{}
+
+	err = state.decodeTreeShape(buff)
 
 	if err != nil {
 		t.Errorf("Got error %s", err)
@@ -452,14 +447,16 @@ func TestHuffmanTreeEncodeDecodeRandom(t *testing.T) {
 			input_tree := random_tree(size)
 			input_tree.encodeTreeShape(&buff)
 
-			output_tree, err := decodeTreeShape(&buff)
+			var state decodeState
+
+			err := state.decodeTreeShape(buff)
 
 			if err != nil {
 				t.Errorf("Got error %s", err)
 			}
 
-			if !reflect.DeepEqual(input_tree, output_tree) {
-				t.Errorf("Unexpected tree: %v", output_tree)
+			if !reflect.DeepEqual(input_tree, state.tree) {
+				t.Errorf("Expected:\n%sGot:\n%s", input_tree, state.tree)
 			}
 		}
 
@@ -469,16 +466,18 @@ func TestHuffmanTreeEncodeDecodeRandom(t *testing.T) {
 
 func TestHuffmanTreeDecodeLeaves(t *testing.T) {
 
-	with_leaf_data := &HuffmanTree{
+	var with_leaf_data, without_leaf_data decodeState
+
+	with_leaf_data.tree = &HuffmanTree{
 		data: 0x01}
 
-	without_leaf_data := &HuffmanTree{}
+	without_leaf_data.tree = &HuffmanTree{}
 
 	var buff bytes.Buffer
 
-	with_leaf_data.encodeTreeLeaves(&buff)
+	with_leaf_data.tree.encodeTreeLeaves(&buff)
 
-	err := without_leaf_data.decodeTreeLeaves(&buff)
+	err := without_leaf_data.decodeTreeLeaves(buff)
 
 	if err != nil {
 		t.Errorf("Got error %s", err)
@@ -489,14 +488,14 @@ func TestHuffmanTreeDecodeLeaves(t *testing.T) {
 	}
 
 	// zero byte as data
-	with_leaf_data = &HuffmanTree{
+	with_leaf_data.tree = &HuffmanTree{
 		data: 0x00}
 
-	without_leaf_data = &HuffmanTree{}
+	without_leaf_data.tree = &HuffmanTree{}
 
-	with_leaf_data.encodeTreeLeaves(&buff)
+	with_leaf_data.tree.encodeTreeLeaves(&buff)
 
-	err = without_leaf_data.decodeTreeLeaves(&buff)
+	err = without_leaf_data.decodeTreeLeaves(buff)
 
 	if err != nil {
 		t.Errorf("Got error %s", err)
@@ -507,7 +506,7 @@ func TestHuffmanTreeDecodeLeaves(t *testing.T) {
 	}
 
 	// bigger tree
-	with_leaf_data = &HuffmanTree{
+	with_leaf_data.tree = &HuffmanTree{
 		left: &HuffmanTree{
 			left: &HuffmanTree{
 				left: &HuffmanTree{
@@ -525,7 +524,7 @@ func TestHuffmanTreeDecodeLeaves(t *testing.T) {
 		right: &HuffmanTree{
 			data: 0x01}}
 
-	without_leaf_data = &HuffmanTree{
+	without_leaf_data.tree = &HuffmanTree{
 		left: &HuffmanTree{
 			left: &HuffmanTree{
 				left: &HuffmanTree{
@@ -537,9 +536,9 @@ func TestHuffmanTreeDecodeLeaves(t *testing.T) {
 				right: &HuffmanTree{}}},
 		right: &HuffmanTree{}}
 
-	with_leaf_data.encodeTreeLeaves(&buff)
+	with_leaf_data.tree.encodeTreeLeaves(&buff)
 
-	err = without_leaf_data.decodeTreeLeaves(&buff)
+	err = without_leaf_data.decodeTreeLeaves(buff)
 
 	if err != nil {
 		t.Errorf("Got error %s", err)

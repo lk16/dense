@@ -1,5 +1,9 @@
 package bits
 
+import (
+	"bytes"
+)
+
 type Slice struct {
 	length int
 	data   uint64
@@ -63,5 +67,18 @@ func (slice *Slice) PopLeadingBytes() (bytes []byte) {
 		bytes = append(bytes, b)
 		slice.length -= 8
 	}
+	return
+}
+
+func (slice *Slice) String() (str string) {
+	var buff bytes.Buffer
+	for i := slice.length - 1; i >= 0; i-- {
+		if slice.data&(1<<uint(i)) == 0 {
+			buff.WriteByte('0')
+		} else {
+			buff.WriteByte('1')
+		}
+	}
+	str = buff.String()
 	return
 }

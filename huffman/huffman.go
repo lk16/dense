@@ -5,6 +5,7 @@ import (
 	"dense/bits"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 	"sort"
 )
@@ -41,9 +42,31 @@ func Encode(reader io.Reader, writer io.Writer) (err error) {
 	return
 }
 
+type decodeState struct {
+	tree   *HuffmanTree
+	writer io.Writer
+}
+
 func Decode(reader io.Reader, writer io.Writer) (err error) {
 
-	tree, err := decodeTreeShape(reader)
+	state := decodeState{
+		tree:   nil,
+		writer: writer}
+
+	for {
+		_, err = state.readBlock(reader)
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+				break
+			}
+			return
+		}
+	}
+
+	return
+
+	/*tree, err := decodeTreeShape(reader)
 	if err != nil {
 		return err
 	}
@@ -54,7 +77,7 @@ func Decode(reader io.Reader, writer io.Writer) (err error) {
 	}
 
 	err = tree.decodeBody(reader, writer)
-	return
+	return*/
 }
 
 type HuffmanTree struct {
@@ -140,56 +163,34 @@ func generateTree(reader io.Reader) (tree *HuffmanTree, err error) {
 	return
 }
 
-func decodeTreeShape(reader io.Reader) (tree *HuffmanTree, err error) {
-	block_id_buff := make([]byte, 1)
+func (state *decodeState) decodeTreeShape(buff bytes.Buffer) (err error) {
 
-	if _, err = reader.Read(block_id_buff); err != nil {
-		return
-	}
+	bits_reader := bits.NewReader(&buff)
+	var decodeShape func() (*HuffmanTree, error)
 
-	if block_id_buff[0] != BLOCK_ID_SHAPE {
-		err = errors.New("Unexpected block ID")
-		return
-	}
-
-	len_buff := make([]byte, 8)
-	if _, err = reader.Read(len_buff); err != nil {
-		return
-	}
-	shape_buff_len := binary.LittleEndian.Uint64(len_buff)
-
-	var shape_buff bytes.Buffer
-
-	_, err = io.CopyN(&shape_buff, reader, int64(shape_buff_len))
-	if err != nil {
-		return
-	}
-
-	tree = &HuffmanTree{}
-
-	stack := []**HuffmanTree{
-		&tree}
-
-	bits_reader := bits.NewReader(&shape_buff)
-
-	for len(stack) > 0 {
-
-		visiting_node := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
+	decodeShape = func() (node *HuffmanTree, err error) {
 
 		bit, err := bits_reader.ReadBit()
 
 		if err != nil {
-			return tree, err
+			return nil, err
 		}
 
-		if bit {
-			(*visiting_node).left = &HuffmanTree{}
-			(*visiting_node).right = &HuffmanTree{}
-			stack = append(stack, &((*visiting_node).right))
-			stack = append(stack, &((*visiting_node).left))
+		if !bit {
+			return nil, nil
 		}
+
+		node = &HuffmanTree{}
+		if node.left, err = decodeShape(); err != nil {
+			return nil, err
+		}
+
+		node.right, err = decodeShape()
+		return
 	}
+
+	state.tree, err = decodeShape()
+	fmt.Printf("%v\n", state.tree.String())
 	return
 }
 
@@ -199,41 +200,20 @@ func (node *HuffmanTree) encodeTreeShape(writer io.Writer) (err error) {
 	shape_buff_writer := bits.NewWriter(&shape_buff)
 
 	node.encodeTreeShapeRecursive(shape_buff_writer)
-	shape_buff_writer.FlushBits()
+	shape_buff_writer.WritePaddingBits()
 
 	_, err = writeBlock(writer, BLOCK_ID_SHAPE, shape_buff)
 	return
 }
 
-func (tree *HuffmanTree) decodeTreeLeaves(reader io.Reader) (err error) {
-	block_id_buff := make([]byte, 1)
-
-	if _, err = reader.Read(block_id_buff); err != nil {
-		return
-	}
-
-	if block_id_buff[0] != BLOCK_ID_LEAVES {
-		err = errors.New("Unexpected block ID")
-		return
-	}
-
-	len_buff := make([]byte, 8)
-	if _, err = reader.Read(len_buff); err != nil {
-		return
-	}
-	leaves_buff_len := binary.LittleEndian.Uint64(len_buff)
-
-	leaves_buff := make([]byte, leaves_buff_len)
-
-	if _, err = reader.Read(leaves_buff); err != nil {
-		return
-	}
+func (state *decodeState) decodeTreeLeaves(buff bytes.Buffer) (err error) {
 
 	var assign_leaves func(*HuffmanTree, *int)
+	bytes := buff.Bytes()
 
 	assign_leaves = func(tree *HuffmanTree, index *int) {
 		if tree.left == nil {
-			tree.data = leaves_buff[*index]
+			tree.data = bytes[*index]
 			*index++
 			return
 		}
@@ -243,7 +223,7 @@ func (tree *HuffmanTree) decodeTreeLeaves(reader io.Reader) (err error) {
 	}
 
 	index := 0
-	assign_leaves(tree, &index)
+	assign_leaves(state.tree, &index)
 
 	return
 }
@@ -342,57 +322,30 @@ func (node *HuffmanTree) encodeBody(reader io.Reader, writer io.Writer, table ma
 		bits_writer.WriteSlice(&slice)
 	}
 
-	trailing_bit_count := byte(bits_writer.CountUnflushedBits())
-	bits_writer.FlushBits()
+	padding_bits_count := byte(bits_writer.CountPaddingBits())
+	bits_writer.WritePaddingBits()
 
-	body_buff.WriteByte(trailing_bit_count)
+	body_buff.WriteByte(padding_bits_count)
 	body_buff.Write(body_data_buff.Bytes())
 
 	_, err = writeBlock(writer, BLOCK_ID_DATA, body_buff)
 	return
 }
 
-func (tree *HuffmanTree) decodeBody(reader io.Reader, writer io.Writer) (err error) {
-	block_id_buff := make([]byte, 1)
-
-	if _, err = reader.Read(block_id_buff); err != nil {
-		return
-	}
-
-	if block_id_buff[0] != BLOCK_ID_DATA {
-		err = errors.New("Unexpected block ID")
-		return
-	}
-
-	len_buff := make([]byte, 8)
-	if _, err = reader.Read(len_buff); err != nil {
-		return
-	}
-	data_len := binary.LittleEndian.Uint64(len_buff)
+func (state *decodeState) decodeBody(buff bytes.Buffer) (err error) {
 
 	trailing_bit_count_buff := make([]byte, 1)
-	if _, err = reader.Read(trailing_bit_count_buff); err != nil {
+	if _, err = buff.Read(trailing_bit_count_buff); err != nil {
 		return
 	}
 
-	// trailing_bit_count byte is included in data_len
-	data_len -= 1
+	padding_bits_count := trailing_bit_count_buff[0]
 
-	trailing_bit_count := trailing_bit_count_buff[0]
+	bits_left := (8 * buff.Len()) - int(padding_bits_count)
 
-	bits_left := (8 * data_len)
+	bit_reader := bits.NewReader(&buff)
 
-	if trailing_bit_count != 0 {
-		bits_left = (8 * (data_len - 1)) + uint64(trailing_bit_count)
-	}
-
-	var data_buff bytes.Buffer
-
-	io.CopyN(&data_buff, reader, int64(data_len))
-
-	bit_reader := bits.NewReader(&data_buff)
-
-	node := tree
+	node := state.tree
 
 	for bits_left != 0 {
 
@@ -410,10 +363,68 @@ func (tree *HuffmanTree) decodeBody(reader io.Reader, writer io.Writer) (err err
 		}
 
 		if node.left == nil {
-			writer.Write([]byte{node.data})
-			node = tree
+			state.writer.Write([]byte{node.data})
+			node = state.tree
 		}
 	}
 
+	return
+}
+
+func (state *decodeState) readBlock(reader io.Reader) (n int, err error) {
+
+	block_id_buff := make([]byte, 1)
+	block_len_buff := make([]byte, 8)
+	var nn int
+
+	if nn, err = reader.Read(block_id_buff); err != nil {
+		return n, err
+	}
+	n += nn
+
+	if nn, err = reader.Read(block_len_buff); err != nil {
+		return
+	}
+	n += nn
+
+	block_id := block_id_buff[0]
+	data_len := binary.LittleEndian.Uint64(block_len_buff)
+
+	var block_data bytes.Buffer
+	_, err = io.CopyN(&block_data, reader, int64(data_len))
+	if err != nil {
+		return n, err
+	}
+	n += int(data_len)
+
+	block_decoders := map[byte]func(bytes.Buffer) error{
+		BLOCK_ID_DATA:   state.decodeBody,
+		BLOCK_ID_LEAVES: state.decodeTreeLeaves,
+		BLOCK_ID_SHAPE:  state.decodeTreeShape}
+
+	if block_decoder, ok := block_decoders[block_id]; ok {
+		err = block_decoder(block_data)
+	} else {
+		err = errors.New("Unexpected block ID")
+	}
+	return
+}
+
+func (tree *HuffmanTree) String() (str string) {
+
+	var toString func(*HuffmanTree, string) string
+
+	toString = func(node *HuffmanTree, prefix string) (str string) {
+		if node == nil {
+			return ""
+		}
+
+		str = prefix + fmt.Sprintf(" %d (%d)\n", node.weight, node.data)
+		str += toString(node.left, prefix+"  ")
+		str += toString(node.right, prefix+"  ")
+		return
+	}
+
+	str = toString(tree, "")
 	return
 }

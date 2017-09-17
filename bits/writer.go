@@ -28,14 +28,19 @@ func (writer *Writer) WriteSlice(slice *Slice) error {
 	return writer.doWrite()
 }
 
-// Count number of unflushed bits since the last written byte
-func (writer *Writer) CountUnflushedBits() (count int) {
-	count = writer.slice.length
+// Count number of padding bits added if WritePaddingBits were called
+func (writer *Writer) CountPaddingBits() (count int) {
+	if writer.slice.length == 0 {
+		count = 0
+		return
+	}
+
+	count = 8 - writer.slice.length
 	return
 }
 
-// Pad and write last bits
-func (writer *Writer) FlushBits() (err error) {
+// Writes padding bits
+func (writer *Writer) WritePaddingBits() (err error) {
 	writer.slice.AppendPadding()
 	return writer.doWrite()
 }
